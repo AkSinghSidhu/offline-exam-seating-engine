@@ -1,0 +1,8 @@
+PySide6
+pandas
+openpyxl
+pyinstaller
+python-docx
+fastapi
+uvicorn[standard]
+python-multipart
