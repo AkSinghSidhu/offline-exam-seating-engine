@@ -9,3 +9,10 @@ build/
 dist/
 *.spec
 .DS_Store
+
+# User requested ignores
+Seating Engine/
+*.md
+!README.md
+!readme.md
+*.zip

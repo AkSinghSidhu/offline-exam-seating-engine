@@ -43,8 +43,8 @@ def get_students_dir() -> str:
 
 
 def get_output_dir() -> str:
-    """Get the output/ directory path (auto-creates)."""
-    path = os.path.join(get_base_dir(), "output")
+    """Get the Downloads directory path (auto-creates if missing)."""
+    path = os.path.join(os.path.expanduser("~"), "Downloads")
     os.makedirs(path, exist_ok=True)
     return path
 

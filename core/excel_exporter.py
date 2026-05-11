@@ -100,8 +100,7 @@ class ExcelExporter:
         room = room_plan.room
         
         # Styling
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color=self.HEADER_COLOR, end_color=self.HEADER_COLOR, fill_type="solid")
+        header_font = Font(bold=True)
         center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
         thin_border = Border(
             left=Side(style="thin"),
@@ -122,7 +121,6 @@ class ExcelExporter:
             cell = ws.cell(row=2, column=col + 2)
             cell.value = f"Col {col + 1}"
             cell.font = header_font
-            cell.fill = header_fill
             cell.alignment = center_align
             cell.border = thin_border
         
@@ -132,7 +130,6 @@ class ExcelExporter:
             row_header = ws.cell(row=row + 3, column=1)
             row_header.value = f"Row {row + 1}"
             row_header.font = header_font
-            row_header.fill = header_fill
             row_header.alignment = center_align
             row_header.border = thin_border
             
@@ -142,19 +139,11 @@ class ExcelExporter:
                 seat = room_plan.get_seat(row, col)
                 
                 if seat and not seat.is_empty and seat.student:
-                    # Include roll number, class, sem
+                    # Include only roll number (UID)
                     student = seat.student
-                    info_parts = [student.roll_number]
-                    if hasattr(student, 'student_class') and student.student_class:
-                        info_parts.append(student.student_class)
-                    if hasattr(student, 'semester') and student.semester:
-                        info_parts.append(f"Sem {student.semester}")
-                    cell.value = f"{' | '.join(info_parts)}\n({seat.exam_id})"
-                    color = self.exam_color_map.get(seat.exam_id, "FFFFFF")
-                    cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+                    cell.value = f"{student.roll_number}"
                 else:
                     cell.value = "—"
-                    cell.fill = PatternFill(start_color=self.EMPTY_COLOR, end_color=self.EMPTY_COLOR, fill_type="solid")
                 
                 cell.alignment = center_align
                 cell.border = thin_border
@@ -171,8 +160,31 @@ class ExcelExporter:
         # Add room summary section below the seating grid
         summary_start_row = room.rows + 5  # Leave a gap after seating grid
         
-        # Get exam counts for this room
-        exam_counts = room_plan.get_exam_counts()
+        # Get exam counts for this room, broken down by class and subject
+        exam_counts = {}
+        for row_data in room_plan.grid:
+            for seat in row_data:
+                if seat and not seat.is_empty and seat.student:
+                    student = seat.student
+                    
+                    # Handle cases where class or subject might be empty
+                    s_class = student.student_class if student.student_class else "Unknown Class"
+                    s_sem = f"Sem {student.semester}" if student.semester else ""
+                    
+                    # If subject is provided, use it, else fallback to exam_id
+                    s_subject = student.subject if student.subject else student.exam_id
+                    
+                    if student.student_class:
+                        key_parts = [s_class]
+                        if s_sem:
+                            key_parts.append(s_sem)
+                        key_parts.append(s_subject)
+                        key = " - ".join(key_parts)
+                    else:
+                        key = s_subject
+                        
+                    exam_counts[key] = exam_counts.get(key, 0) + 1
+
         total_students = room_plan.student_count()
         
         # Summary header
@@ -201,10 +213,8 @@ class ExcelExporter:
             exam_cell = ws.cell(row=summary_start_row, column=1)
             exam_cell.value = exam_id
             
-            # Color indicator cell
-            color = self.exam_color_map.get(exam_id, "FFFFFF")
+            # Color indicator cell (removed color)
             color_cell = ws.cell(row=summary_start_row, column=2)
-            color_cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
             color_cell.border = thin_border
             
             # Count cell
@@ -259,9 +269,25 @@ class ExcelExporter:
         # Collect all exam counts
         all_exam_counts: Dict[str, int] = {}
         for room_plan in plan.room_plans:
-            counts = room_plan.get_exam_counts()
-            for exam_id, count in counts.items():
-                all_exam_counts[exam_id] = all_exam_counts.get(exam_id, 0) + count
+            for row_data in room_plan.grid:
+                for seat in row_data:
+                    if seat and not seat.is_empty and seat.student:
+                        student = seat.student
+                        
+                        s_class = student.student_class if student.student_class else "Unknown Class"
+                        s_sem = f"Sem {student.semester}" if student.semester else ""
+                        s_subject = student.subject if student.subject else student.exam_id
+                        
+                        if student.student_class:
+                            key_parts = [s_class]
+                            if s_sem:
+                                key_parts.append(s_sem)
+                            key_parts.append(s_subject)
+                            key = " - ".join(key_parts)
+                        else:
+                            key = s_subject
+                            
+                        all_exam_counts[key] = all_exam_counts.get(key, 0) + 1
         
         ws.cell(row=start_row + 1, column=1).value = "Exam"
         ws.cell(row=start_row + 1, column=2).value = "Students Seated"
@@ -273,9 +299,8 @@ class ExcelExporter:
             ws.cell(row=row, column=1).value = exam_id
             ws.cell(row=row, column=2).value = count
             
-            # Color indicator
-            color = self.exam_color_map.get(exam_id, "FFFFFF")
-            ws.cell(row=row, column=3).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+            # Color indicator (removed color)
+            pass
         
         # Adjust column widths
         ws.column_dimensions['A'].width = 20

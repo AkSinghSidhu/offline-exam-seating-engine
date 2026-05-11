@@ -432,10 +432,10 @@ class SeatingPlanApp(QMainWindow):
         from paths import get_output_dir
         output_dir = get_output_dir()
 
-        # Auto-generate filenames:  DD-MM-YYYY_RoomWise.docx / DD-MM-YYYY_ClassWise.docx
+        # Auto-generate filenames:  DD-MM-YYYY_RoomWise.xlsx / DD-MM-YYYY_ClassWise.xlsx
         today_str = date.today().strftime("%d-%m-%Y")
-        room_path = os.path.join(output_dir, f"{today_str}_RoomWise.docx")
-        class_path = os.path.join(output_dir, f"{today_str}_ClassWise.docx")
+        room_path = os.path.join(output_dir, f"{today_str}_RoomWise.xlsx")
+        class_path = os.path.join(output_dir, f"{today_str}_ClassWise.xlsx")
 
         self.status_label.setText("⏳ Generating attendance sheets...")
         self.status_label.setStyleSheet(f"color: {COLORS['warning']};")
