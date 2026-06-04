@@ -11,6 +11,7 @@ class Student:
     semester: str = ""       # Semester
     exam_id: str = ""
     subject: str = ""        # Subject name from input data
+    course_code: str = ""    # Course code from input data
     
     @classmethod
     def from_line(cls, line: str, exam_id: str = "") -> Optional['Student']:
@@ -44,14 +45,15 @@ class Student:
         return s
     
     @classmethod
-    def from_excel_row(cls, roll_no: str, student_class: str = "", semester: str = "", exam_id: str = "", subject: str = "") -> 'Student':
+    def from_excel_row(cls, roll_no: str, student_class: str = "", semester: str = "", exam_id: str = "", subject: str = "", course_code: str = "") -> 'Student':
         """Create a student from Excel row data."""
         return cls(
             roll_number=cls._clean_numeric_str(roll_no),
             student_class=str(student_class).strip() if student_class else "",
             semester=cls._clean_numeric_str(semester) if semester else "",
             exam_id=exam_id,
-            subject=str(subject).strip() if subject else ""
+            subject=str(subject).strip() if subject else "",
+            course_code=str(course_code).strip() if course_code else ""
         )
     
     def display_text(self) -> str:

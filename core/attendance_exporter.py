@@ -6,18 +6,16 @@ Generates one attendance sheet per room, following the template:
 - Table: S.No | Roll No | Class | Sem | Subject | Signature
 """
 from pathlib import Path
-from datetime import date
-from typing import Dict, List, Tuple
+from typing import List
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 
 class AttendanceExporter:
     """Exports attendance sheets as an Excel document, one sheet per room."""
 
-    def export(self, plan, output_path: str, progress_callback=None) -> bool:
+    def export(self, plan, output_path: str, progress_callback=None, date_str: str = "") -> bool:
         """
         Export attendance sheets to an Excel document.
 
@@ -31,14 +29,11 @@ class AttendanceExporter:
         """
         try:
             wb = Workbook()
-            if "Sheet" in wb.sheetnames:
-                del wb["Sheet"]
+            ws = wb.active
+            ws.title = "Roomwise Attendance"
 
-            first_sheet = True
             total_rooms = len(plan.room_plans)
-            
-            # Keep track of sheet names to avoid duplicates
-            sheet_names = set()
+            current_row = 1
 
             for i, room_plan in enumerate(plan.room_plans):
                 # Get all students in this room ordered by seat
@@ -46,22 +41,12 @@ class AttendanceExporter:
 
                 if not students_info:
                     continue
-                    
-                room_name = room_plan.room.name[:31]
-                # Ensure unique sheet name
-                original_name = room_name
-                counter = 1
-                while room_name in sheet_names:
-                    suffix = f"_{counter}"
-                    room_name = original_name[:31 - len(suffix)] + suffix
-                    counter += 1
-                sheet_names.add(room_name)
 
-                ws = wb.create_sheet(title=room_name)
-
-                self._create_attendance_sheet(
-                    ws, room_plan, students_info
+                last_row = self._create_attendance_sheet(
+                    ws, room_plan, students_info, date_str, current_row
                 )
+                # Leave 2 empty lines
+                current_row = last_row + 3
                 
                 if progress_callback:
                     progress_callback(int((i + 1) / total_rooms * 100))
@@ -109,8 +94,8 @@ class AttendanceExporter:
 
         return students_info
 
-    def _create_attendance_sheet(self, ws, room_plan, students_info: List[dict]):
-        """Create one attendance sheet (one page) in the worksheet."""
+    def _create_attendance_sheet(self, ws, room_plan, students_info: List[dict], date_str: str, start_row: int) -> int:
+        """Create one attendance sheet (one page) in the worksheet. Returns the last row written."""
         room = room_plan.room
 
         # Determine the subject name from student data
@@ -124,9 +109,6 @@ class AttendanceExporter:
             subject_display = subject_name.replace('_', ' ').title() if subject_name else ""
 
         total_students = len(students_info)
-        # Date is left empty to be filled manually
-        today = ""
-
         # Styling
         bold_font = Font(name='Calibri', size=11, bold=True)
         normal_font = Font(name='Calibri', size=11)
@@ -142,38 +124,41 @@ class AttendanceExporter:
 
         # --- Header Table (Room info) ---
         # Row 1: Room No | Floor
-        ws.cell(row=1, column=1, value="Room No.").font = bold_font
-        ws.cell(row=1, column=2, value=room.name).font = normal_font
-        ws.cell(row=1, column=3, value="Floor").font = bold_font
-        ws.cell(row=1, column=4, value="1st").font = normal_font
+        ws.cell(row=start_row, column=1, value="Room No.").font = bold_font
+        ws.cell(row=start_row, column=2, value=room.name).font = normal_font
+        ws.cell(row=start_row, column=3, value="Floor").font = bold_font
+        floor_value = getattr(room, 'floor', '')
+        ws.cell(row=start_row, column=4, value=floor_value).font = normal_font
         
         # Row 2: Date | Total Students
-        ws.cell(row=2, column=1, value="Date").font = bold_font
-        ws.cell(row=2, column=2, value="").font = normal_font
-        ws.cell(row=2, column=3, value="Total Students").font = bold_font
-        ws.cell(row=2, column=4, value=total_students).font = normal_font
+        ws.cell(row=start_row + 1, column=1, value="Date").font = bold_font
+        ws.cell(row=start_row + 1, column=2, value=date_str).font = normal_font
+        ws.cell(row=start_row + 1, column=3, value="Total Students").font = bold_font
+        ws.cell(row=start_row + 1, column=4, value=total_students).font = normal_font
         
         # Apply borders to header
-        for r in range(1, 3):
+        for r in range(start_row, start_row + 2):
             for c in range(1, 5):
                 cell = ws.cell(row=r, column=c)
                 cell.border = thin_border
                 cell.alignment = left_align
 
         # --- Student Table ---
-        start_row = 4
+        table_start_row = start_row + 3
         headers = ["S.No", "Roll No", "Class", "Sem", "Subject", "Answer Sheet No.", "Signature"]
         
         # Header row
         for i, header in enumerate(headers):
-            cell = ws.cell(row=start_row, column=i+1, value=header)
+            cell = ws.cell(row=table_start_row, column=i+1, value=header)
             cell.font = bold_font
             cell.alignment = center_align
             cell.border = thin_border
 
         # Student rows
+        last_row = table_start_row
         for idx, info in enumerate(students_info):
-            current_row = start_row + 1 + idx
+            current_row = table_start_row + 1 + idx
+            last_row = current_row
             
             # S.No
             c1 = ws.cell(row=current_row, column=1, value=idx + 1)
@@ -209,3 +194,5 @@ class AttendanceExporter:
         ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
+
+        return last_row

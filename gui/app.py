@@ -4,13 +4,12 @@ Modern desktop GUI using PySide6.
 """
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QSplitter, QStatusBar, QFileDialog, QMessageBox,
-    QInputDialog, QCheckBox, QDialog, QDialogButtonBox, QProgressBar
+    QPushButton, QFrame, QStatusBar, QFileDialog, QMessageBox,
+    QInputDialog, QProgressBar, QDateEdit
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QDate
 from PySide6.QtGui import QFont, QIcon
 from typing import Dict, List, Tuple
-from datetime import date
 import os
 import sys
 
@@ -24,6 +23,7 @@ from core.constraint_validator import ConstraintValidator
 from core.excel_exporter import ExcelExporter
 from core.attendance_exporter import AttendanceExporter
 from core.classwise_attendance_exporter import ClassWiseAttendanceExporter
+from core.env_exporter import EnvExporter
 from gui.theme import COLORS, get_main_stylesheet, get_exam_color
 from gui.exam_panel import ExamPanel
 from gui.room_panel import RoomPanel
@@ -43,6 +43,7 @@ class AttendanceExportThread(QThread):
         plan,
         room_path: str,
         class_path: str,
+        date_str: str,
     ):
         super().__init__()
         self.room_exporter = room_exporter
@@ -50,6 +51,7 @@ class AttendanceExportThread(QThread):
         self.plan = plan
         self.room_path = room_path
         self.class_path = class_path
+        self.date_str = date_str
 
     def run(self):
         results: List[Tuple[bool, str]] = []
@@ -59,7 +61,7 @@ class AttendanceExportThread(QThread):
             self.progress.emit(pct // 2)
 
         ok_room = self.room_exporter.export(
-            self.plan, self.room_path, progress_callback=room_progress
+            self.plan, self.room_path, progress_callback=room_progress, date_str=self.date_str
         )
         results.append((ok_room, self.room_path))
 
@@ -68,11 +70,31 @@ class AttendanceExportThread(QThread):
             self.progress.emit(50 + pct // 2)
 
         ok_class = self.class_exporter.export(
-            self.plan, self.class_path, progress_callback=class_progress
+            self.plan, self.class_path, progress_callback=class_progress, date_str=self.date_str
         )
         results.append((ok_class, self.class_path))
 
         self.finished.emit(results)
+
+
+class EnvExportThread(QThread):
+    """Runs ENV export in a background thread."""
+    finished = Signal(bool, str)
+    progress = Signal(int)
+
+    def __init__(self, exporter: EnvExporter, plan, output_path: str, template_path: str, date_str: str):
+        super().__init__()
+        self.exporter = exporter
+        self.plan = plan
+        self.output_path = output_path
+        self.template_path = template_path
+        self.date_str = date_str
+
+    def run(self):
+        ok = self.exporter.export(
+            self.plan, self.output_path, self.template_path, self.date_str, progress_callback=self.progress.emit
+        )
+        self.finished.emit(ok, self.output_path)
 
 
 class SeatingPlanApp(QMainWindow):
@@ -109,6 +131,7 @@ class SeatingPlanApp(QMainWindow):
         self.exporter = ExcelExporter()
         self.attendance_exporter = AttendanceExporter()
         self.classwise_attendance_exporter = ClassWiseAttendanceExporter()
+        self.env_exporter = EnvExporter()
         self.attendance_thread = None
         
         # Build UI
@@ -171,10 +194,87 @@ class SeatingPlanApp(QMainWindow):
         title.setStyleSheet(f"color: {COLORS['text_primary']};")
         header_layout.addWidget(title)
         
-        subtitle = QLabel("Automated Anti-Cheating Arrangement")
-        subtitle.setFont(QFont("Segoe UI", 11))
-        subtitle.setStyleSheet(f"color: {COLORS['text_muted']}; margin-left: 16px;")
-        header_layout.addWidget(subtitle)
+        date_label = QLabel("Date:")
+        date_label.setFont(QFont("Segoe UI", 11))
+        date_label.setStyleSheet(f"color: {COLORS['text_muted']}; margin-left: 16px;")
+        header_layout.addWidget(date_label)
+        
+        self.date_picker = QDateEdit()
+        self.date_picker.setCalendarPopup(True)
+        self.date_picker.setDate(QDate.currentDate())
+        self.date_picker.setDisplayFormat("dd-MM-yyyy")
+        self.date_picker.setFont(QFont("Segoe UI", 11))
+        self.date_picker.setStyleSheet(f"""
+            QDateEdit {{
+                color: {COLORS['text_primary']};
+                background-color: {COLORS['bg_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 4px 8px;
+            }}
+            QDateEdit::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px;
+                border-left: 1px solid {COLORS['border']};
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 5px;
+                background-color: transparent;
+            }}
+            QDateEdit::drop-down:hover {{
+                background-color: {COLORS['bg_tertiary']};
+            }}
+            QDateEdit::down-arrow {{
+                image: none;
+                width: 6px;
+                height: 6px;
+                background-color: {COLORS['text_secondary']};
+                border-radius: 3px;
+            }}
+        """)
+        
+        # Style the calendar popup
+        calendar_css = f"""
+            QCalendarWidget {{
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                background-color: {COLORS['bg_primary']};
+            }}
+            QCalendarWidget QWidget {{
+                alternate-background-color: {COLORS['bg_tertiary']};
+                background-color: {COLORS['bg_primary']};
+            }}
+            QCalendarWidget QToolButton {{
+                color: {COLORS['text_primary']};
+                background-color: {COLORS['bg_primary']};
+                border: none;
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QCalendarWidget QToolButton:hover {{
+                background-color: {COLORS['bg_tertiary']};
+            }}
+            QCalendarWidget QMenu {{
+                background-color: {COLORS['bg_primary']};
+                color: {COLORS['text_primary']};
+            }}
+            QCalendarWidget QSpinBox {{
+                background-color: {COLORS['bg_primary']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+            }}
+            QCalendarWidget QAbstractItemView:enabled {{
+                color: {COLORS['text_primary']};
+                background-color: {COLORS['bg_primary']};
+                selection-background-color: {COLORS['primary']};
+                selection-color: white;
+            }}
+            QCalendarWidget QAbstractItemView:disabled {{
+                color: {COLORS['text_muted']};
+            }}
+        """
+        self.date_picker.calendarWidget().setStyleSheet(calendar_css)
+        header_layout.addWidget(self.date_picker)
         
         header_layout.addStretch()
         
@@ -206,6 +306,14 @@ class SeatingPlanApp(QMainWindow):
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_excel)
         header_layout.addWidget(self.export_btn)
+        
+        # Export ENV button
+        self.export_env_btn = QPushButton("✉️ Generate ENV")
+        self.export_env_btn.setFixedSize(130, 40)
+        self.export_env_btn.setProperty("class", "secondary")
+        self.export_env_btn.setEnabled(False)
+        self.export_env_btn.clicked.connect(self._export_env)
+        header_layout.addWidget(self.export_env_btn)
         
         parent_layout.addWidget(header)
     
@@ -277,6 +385,7 @@ class SeatingPlanApp(QMainWindow):
         self.seating_view.clear()
         self.export_btn.setEnabled(False)
         self.export_attendance_btn.setEnabled(False)
+        self.export_env_btn.setEnabled(False)
         self.status_label.setText("ℹ️ Add exams and rooms to get started")
         self.status_label.setStyleSheet(f"color: {COLORS['text_muted']};")
         self.stats_label.setText("Exams: 0 | Rooms: 0 | Students: 0 | Capacity: 0")
@@ -318,6 +427,7 @@ class SeatingPlanApp(QMainWindow):
         self.seating_view.clear()
         self.export_btn.setEnabled(False)
         self.export_attendance_btn.setEnabled(False)
+        self.export_env_btn.setEnabled(False)
     
     def _generate_seating(self):
         """Generate the seating plan."""
@@ -356,8 +466,17 @@ class SeatingPlanApp(QMainWindow):
         self.status_label.setText("⏳ Generating seating plan...")
         self.status_label.setStyleSheet(f"color: {COLORS['warning']};")
         
+        # Build reserve pool: all rooms NOT in the selected set
+        all_rooms = self.room_panel.get_all_rooms()
+        selected_names = {r.name for r in rooms}
+        reserve_rooms = [r for r in all_rooms if r.name not in selected_names]
+        
         # Generate seating
-        self.seating_plan = self.engine.generate_seating(exams, rooms, max_exams_per_room=max_exams)
+        self.seating_plan = self.engine.generate_seating(
+            exams, rooms,
+            max_exams_per_room=max_exams,
+            reserve_rooms=reserve_rooms
+        )
         
         if self.seating_plan.success:
             # Validate constraints
@@ -381,6 +500,7 @@ class SeatingPlanApp(QMainWindow):
             # Enable export
             self.export_btn.setEnabled(True)
             self.export_attendance_btn.setEnabled(True)
+            self.export_env_btn.setEnabled(True)
         else:
             self.status_label.setText(f"❌ {self.seating_plan.message}")
             self.status_label.setStyleSheet(f"color: {COLORS['danger']};")
@@ -394,7 +514,8 @@ class SeatingPlanApp(QMainWindow):
         
         # Ask for save location
         from paths import get_output_dir
-        default_path = os.path.join(get_output_dir(), "seating_plan.xlsx")
+        date_str = self.date_picker.date().toString("dd-MM-yyyy")
+        default_path = os.path.join(get_output_dir(), f"{date_str}_seating_plan.xlsx")
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Seating Plan",
@@ -433,9 +554,9 @@ class SeatingPlanApp(QMainWindow):
         output_dir = get_output_dir()
 
         # Auto-generate filenames:  DD-MM-YYYY_RoomWise.xlsx / DD-MM-YYYY_ClassWise.xlsx
-        today_str = date.today().strftime("%d-%m-%Y")
-        room_path = os.path.join(output_dir, f"{today_str}_RoomWise.xlsx")
-        class_path = os.path.join(output_dir, f"{today_str}_ClassWise.xlsx")
+        date_str = self.date_picker.date().toString("dd-MM-yyyy")
+        room_path = os.path.join(output_dir, f"{date_str}_RoomWise.xlsx")
+        class_path = os.path.join(output_dir, f"{date_str}_ClassWise.xlsx")
 
         self.status_label.setText("⏳ Generating attendance sheets...")
         self.status_label.setStyleSheet(f"color: {COLORS['warning']};")
@@ -456,6 +577,7 @@ class SeatingPlanApp(QMainWindow):
             self.seating_plan,
             room_path,
             class_path,
+            date_str,
         )
         self.attendance_thread.progress.connect(self.progress_bar.setValue)
         self.attendance_thread.finished.connect(self._on_attendance_exported)
@@ -501,6 +623,73 @@ class SeatingPlanApp(QMainWindow):
                 self,
                 "Export Failed",
                 f"Failed to generate: {', '.join(failures)} attendance sheet(s)."
+            )
+
+    def _export_env(self):
+        """Export the ENV document using the 13-5-26.docx template."""
+        if not self.seating_plan or not self.seating_plan.success:
+            return
+
+        template_name = "13-5-26.docx"
+        template_path = self._get_resource_path(template_name)
+        if not os.path.exists(template_path):
+            # Check current working directory
+            template_path = os.path.join(os.getcwd(), template_name)
+            if not os.path.exists(template_path):
+                QMessageBox.critical(self, "Template Missing", f"Could not find template file '{template_name}'.")
+                return
+
+        from paths import get_output_dir
+        output_dir = get_output_dir()
+        date_str = self.date_picker.date().toString("dd-MM-yyyy")
+        output_path = os.path.join(output_dir, f"{date_str}_ENV.docx")
+
+        self.status_label.setText("⏳ Generating ENV document...")
+        self.status_label.setStyleSheet(f"color: {COLORS['warning']};")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        
+        self.export_btn.setEnabled(False)
+        self.export_attendance_btn.setEnabled(False)
+        self.export_env_btn.setEnabled(False)
+        self.generate_btn.setEnabled(False)
+        self.reset_btn.setEnabled(False)
+
+        self.env_thread = EnvExportThread(
+            self.env_exporter,
+            self.seating_plan,
+            output_path,
+            template_path,
+            date_str
+        )
+        self.env_thread.progress.connect(self.progress_bar.setValue)
+        self.env_thread.finished.connect(self._on_env_exported)
+        self.env_thread.start()
+
+    def _on_env_exported(self, ok: bool, path: str):
+        self.progress_bar.setVisible(False)
+        
+        self.export_btn.setEnabled(True)
+        self.export_attendance_btn.setEnabled(True)
+        self.export_env_btn.setEnabled(True)
+        self.generate_btn.setEnabled(True)
+        self.reset_btn.setEnabled(True)
+
+        if ok:
+            self.status_label.setText(f"✅ ENV exported successfully")
+            self.status_label.setStyleSheet(f"color: {COLORS['success']};")
+            QMessageBox.information(
+                self,
+                "Export Complete",
+                f"ENV document generated successfully at:\n{path}"
+            )
+        else:
+            self.status_label.setText("❌ Export failed")
+            self.status_label.setStyleSheet(f"color: {COLORS['danger']};")
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                "Failed to generate ENV document. Check console for details."
             )
 
 

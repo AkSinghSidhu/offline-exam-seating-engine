@@ -19,7 +19,7 @@ from openpyxl.utils import get_column_letter
 class ClassWiseAttendanceExporter:
     """Exports attendance sheets as an Excel document, one sheet per class per room."""
 
-    def export(self, plan, output_path: str, progress_callback=None) -> bool:
+    def export(self, plan, output_path: str, progress_callback=None, date_str: str = "") -> bool:
         """
         Export class-wise attendance sheets to an Excel document.
 
@@ -33,8 +33,8 @@ class ClassWiseAttendanceExporter:
         """
         try:
             wb = Workbook()
-            if "Sheet" in wb.sheetnames:
-                del wb["Sheet"]
+            ws = wb.active
+            ws.title = "Classwise Attendance"
 
             class_groups_by_room = self._group_students_by_room_and_class_ordered(plan)
 
@@ -43,28 +43,14 @@ class ClassWiseAttendanceExporter:
 
             total_sheets = sum(len(groups) for groups in class_groups_by_room)
             produced_sheets = 0
-            
-            # Keep track of sheet names to avoid duplicates
-            sheet_names = set()
+            current_row = 1
 
             for room_plan, groups in class_groups_by_room:
                 room_name = room_plan.room.name
                 for class_key, students_info in sorted(groups.items()):
                     
-                    # Create sheet name
-                    sheet_title = f"{room_name[:15]}_{class_key[:15]}"
-                    # Ensure unique sheet name
-                    original_name = sheet_title
-                    counter = 1
-                    while sheet_title in sheet_names:
-                        suffix = f"_{counter}"
-                        sheet_title = original_name[:31 - len(suffix)] + suffix
-                        counter += 1
-                    sheet_names.add(sheet_title)
-
-                    ws = wb.create_sheet(title=sheet_title)
-
-                    self._create_attendance_sheet(ws, room_name, class_key, students_info)
+                    last_row = self._create_attendance_sheet(ws, room_plan, class_key, students_info, date_str, current_row)
+                    current_row = last_row + 3
 
                     produced_sheets += 1
                     if progress_callback:
@@ -112,6 +98,7 @@ class ClassWiseAttendanceExporter:
                             'semester': student.semester,
                             'subject': student.subject,
                             'exam_id': seat.exam_id,
+                            'course_code': getattr(student, 'course_code', ''),
                         })
 
             if groups:
@@ -122,12 +109,10 @@ class ClassWiseAttendanceExporter:
 
         return results
 
-    def _create_attendance_sheet(self, ws, room_name: str, class_key: str, students_info: List[dict]):
-        """Create one attendance sheet in the worksheet."""
+    def _create_attendance_sheet(self, ws, room_plan, class_key: str, students_info: List[dict], date_str: str, start_row: int) -> int:
+        """Create one attendance sheet in the worksheet. Returns the last row written."""
+        room_name = room_plan.room.name
         total_students = len(students_info)
-        # Date is left empty to be filled manually
-        today = ""
-
         subject_display = ""
         for info in students_info:
             if info.get('subject'):
@@ -153,41 +138,44 @@ class ClassWiseAttendanceExporter:
         )
 
         # --- Header Table ---
-        ws.cell(row=1, column=1, value="Room No.").font = bold_font
-        ws.cell(row=1, column=2, value=room_name).font = normal_font
-        ws.cell(row=1, column=3, value="Floor").font = bold_font
-        ws.cell(row=1, column=4, value="1st").font = normal_font
-        ws.cell(row=1, column=5, value="").font = normal_font
-        ws.cell(row=1, column=6, value="").font = normal_font
+        ws.cell(row=start_row, column=1, value="Room No.").font = bold_font
+        ws.cell(row=start_row, column=2, value=room_name).font = normal_font
+        ws.cell(row=start_row, column=3, value="Floor").font = bold_font
+        floor_value = getattr(room_plan.room, 'floor', '')
+        ws.cell(row=start_row, column=4, value=floor_value).font = normal_font
+        ws.cell(row=start_row, column=5, value="").font = normal_font
+        ws.cell(row=start_row, column=6, value="").font = normal_font
 
-        ws.cell(row=2, column=1, value="Date").font = bold_font
-        ws.cell(row=2, column=2, value="").font = normal_font
-        ws.cell(row=2, column=3, value="Class").font = bold_font
+        ws.cell(row=start_row + 1, column=1, value="Date").font = bold_font
+        ws.cell(row=start_row + 1, column=2, value=date_str).font = normal_font
+        ws.cell(row=start_row + 1, column=3, value="Class").font = bold_font
         
         class_display = f"{student_class} - Sem {semester}" if semester else student_class
-        ws.cell(row=2, column=4, value=class_display).font = normal_font
+        ws.cell(row=start_row + 1, column=4, value=class_display).font = normal_font
         
-        ws.cell(row=2, column=5, value="Total Students").font = bold_font
-        ws.cell(row=2, column=6, value=total_students).font = normal_font
+        ws.cell(row=start_row + 1, column=5, value="Total Students").font = bold_font
+        ws.cell(row=start_row + 1, column=6, value=total_students).font = normal_font
 
-        for r in range(1, 3):
+        for r in range(start_row, start_row + 2):
             for c in range(1, 7):
                 cell = ws.cell(row=r, column=c)
                 cell.border = thin_border
                 cell.alignment = left_align
 
         # --- Student Table (5 columns) ---
-        start_row = 4
+        table_start_row = start_row + 3
         col_headers = ["S.No", "Roll No", "Subject", "Answer Sheet No.", "Signature"]
         
         for i, header in enumerate(col_headers):
-            cell = ws.cell(row=start_row, column=i+1, value=header)
+            cell = ws.cell(row=table_start_row, column=i+1, value=header)
             cell.font = bold_font
             cell.alignment = center_align
             cell.border = thin_border
 
+        last_row = table_start_row
         for idx, info in enumerate(students_info):
-            current_row = start_row + 1 + idx
+            current_row = table_start_row + 1 + idx
+            last_row = current_row
             
             c1 = ws.cell(row=current_row, column=1, value=idx + 1)
             c2 = ws.cell(row=current_row, column=2, value=info['roll_number'])
@@ -212,3 +200,5 @@ class ClassWiseAttendanceExporter:
         ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
+
+        return last_row

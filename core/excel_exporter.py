@@ -23,24 +23,6 @@ class ExcelExporter:
     - Row/column headers
     """
     
-    # Default exam colors (will cycle through these)
-    EXAM_COLORS = [
-        "4A90D9",  # Blue
-        "50C878",  # Emerald
-        "F4A460",  # Sandy Brown
-        "DA70D6",  # Orchid
-        "20B2AA",  # Light Sea Green
-        "FFB347",  # Pastel Orange
-        "87CEEB",  # Sky Blue
-        "DDA0DD",  # Plum
-    ]
-    
-    EMPTY_COLOR = "E0E0E0"  # Light gray for empty seats
-    HEADER_COLOR = "2C3E50"  # Dark header
-    
-    def __init__(self):
-        self.exam_color_map: Dict[str, str] = {}
-    
     def export(self, plan, output_path: str) -> bool:
         """
         Export seating plan to Excel file.
@@ -57,9 +39,6 @@ class ExcelExporter:
             # Remove default sheet
             if "Sheet" in wb.sheetnames:
                 del wb["Sheet"]
-            
-            # Assign colors to exams
-            self._assign_exam_colors(plan)
             
             # Create sheet for each room
             for room_plan in plan.room_plans:
@@ -81,21 +60,17 @@ class ExcelExporter:
             traceback.print_exc()
             return False
     
-    def _assign_exam_colors(self, plan):
-        """Assign colors to each exam in the plan."""
-        exam_ids = set()
-        for room_plan in plan.room_plans:
-            for row in room_plan.grid:
-                for seat in row:
-                    if seat and not seat.is_empty:
-                        exam_ids.add(seat.exam_id)
-        
-        for i, exam_id in enumerate(sorted(exam_ids)):
-            self.exam_color_map[exam_id] = self.EXAM_COLORS[i % len(self.EXAM_COLORS)]
-    
     def _create_room_sheet(self, wb: Workbook, room_plan):
         """Create a worksheet for a single room."""
-        ws = wb.create_sheet(title=room_plan.room.name[:31])  # Excel limit
+        base_title = room_plan.room.name[:31]
+        title = base_title
+        counter = 1
+        while title in wb.sheetnames:
+            suffix = f"_{counter}"
+            title = f"{base_title[:31-len(suffix)]}{suffix}"
+            counter += 1
+            
+        ws = wb.create_sheet(title=title)
         
         room = room_plan.room
         
@@ -189,7 +164,7 @@ class ExcelExporter:
         
         # Summary header
         ws.merge_cells(start_row=summary_start_row, start_column=1, 
-                      end_row=summary_start_row, end_column=3)
+                      end_row=summary_start_row, end_column=2)
         summary_header = ws.cell(row=summary_start_row, column=1)
         summary_header.value = "Room Summary"
         summary_header.font = Font(bold=True, size=12)
@@ -213,12 +188,8 @@ class ExcelExporter:
             exam_cell = ws.cell(row=summary_start_row, column=1)
             exam_cell.value = exam_id
             
-            # Color indicator cell (removed color)
-            color_cell = ws.cell(row=summary_start_row, column=2)
-            color_cell.border = thin_border
-            
             # Count cell
-            count_cell = ws.cell(row=summary_start_row, column=3)
+            count_cell = ws.cell(row=summary_start_row, column=2)
             count_cell.value = count
             count_cell.alignment = center_align
     
@@ -298,9 +269,6 @@ class ExcelExporter:
             row = start_row + 2 + idx
             ws.cell(row=row, column=1).value = exam_id
             ws.cell(row=row, column=2).value = count
-            
-            # Color indicator (removed color)
-            pass
         
         # Adjust column widths
         ws.column_dimensions['A'].width = 20

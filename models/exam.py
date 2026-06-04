@@ -84,6 +84,14 @@ class Exam:
                         subject_col = col
                         break
                 
+                # Find course code column
+                course_code_col = None
+                for col in df.columns:
+                    col_lower = str(col).lower().strip()
+                    if col_lower in ['course code', 'subject code', 'paper code', 'course_code']:
+                        course_code_col = col
+                        break
+                
                 # Group students by class+sem if auto_split is enabled
                 students_by_group: Dict[str, List[Student]] = {}
                 
@@ -103,6 +111,10 @@ class Exam:
                     subject = ""
                     if subject_col and not pd.isna(row.get(subject_col)):
                         subject = str(row[subject_col]).strip()
+                        
+                    course_code = ""
+                    if course_code_col and not pd.isna(row.get(course_code_col)):
+                        course_code = str(row[course_code_col]).strip()
                     
                     # Create group key
                     if auto_split and (student_class or semester):
@@ -124,7 +136,8 @@ class Exam:
                         student_class=student_class,
                         semester=semester,
                         exam_id=exam_id,
-                        subject=subject
+                        subject=subject,
+                        course_code=course_code
                     )
                     students_by_group[group_key].append(student)
                 

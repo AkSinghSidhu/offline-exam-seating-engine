@@ -425,6 +425,10 @@ class RoomPanel(QWidget):
             return self._auto_select_rooms()
         return self.rooms.copy()
     
+    def get_all_rooms(self) -> List[Room]:
+        """Return ALL available rooms from the database (the full pool)."""
+        return self.available_rooms.copy()
+    
     def _auto_select_rooms(self) -> List[Room]:
         """Automatically select optimal rooms to fit all students.
         
