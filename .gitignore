@@ -1,18 +1,74 @@
-.venv/
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-data/
-output/
-exe/
+*.so
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# PyInstaller / Executables / Build artifacts
 build/
 dist/
+exe/
 *.spec
-.DS_Store
+*.exe
+*.bin
+*.out
+*.app
+Seating Engine EXE files/
+Seating Engine*/
 
-# User requested ignores
-Seating Engine/
+# Data, Output, and Archives
+data/
+output/
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Documents & Office files (Reports, generated docs, and lock files)
+*.docx
+*.doc
+*.pdf
+.~lock.*
+.~lock.*#
+.xdp-*
+~$*
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# IDEs & Code Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Markdown files (keep README)
 *.md
 !README.md
 !readme.md
-*.zip
